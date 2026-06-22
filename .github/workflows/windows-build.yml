@@ -13,7 +13,7 @@ jobs:
     with:
       platform: "windows-latest"
       target: "x86_64-pc-windows-msvc"
-      build-args: '-c {"bundle":{"windows":{"signCommand":null}}}'
+      build-args: '-c {"bundle":{"createUpdaterArtifacts":false,"windows":{"signCommand":null}}}'
       upload-artifacts: true
       sign-binaries: false
     secrets: inherit
