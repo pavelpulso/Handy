@@ -1,4 +1,4 @@
-name: "Windows Build (x64)"
+name: "Windows Build"
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-x64:
     permissions:
       contents: write
     uses: ./.github/workflows/build.yml
@@ -14,6 +14,18 @@ jobs:
       platform: "windows-latest"
       target: "x86_64-pc-windows-msvc"
       build-args: '-c {"bundle":{"createUpdaterArtifacts":false,"windows":{"signCommand":null}}}'
+      upload-artifacts: true
+      sign-binaries: false
+    secrets: inherit
+
+  build-arm64:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: "windows-11-arm"
+      target: "aarch64-pc-windows-msvc"
+      build-args: '--target aarch64-pc-windows-msvc -c {"bundle":{"createUpdaterArtifacts":false,"windows":{"signCommand":null}}}'
       upload-artifacts: true
       sign-binaries: false
     secrets: inherit
