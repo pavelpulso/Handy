@@ -213,7 +213,12 @@
         "translation": "Translation",
         "allLanguages": "All Languages"
       },
-      "noModelsMatch": "No models match this filter."
+      "noModelsMatch": "No models match this filter.",
+      "groqApiKey": {
+        "title": "Groq API Key",
+        "description": "Required for the Groq Whisper model. Your key is stored locally and only sent to the Groq API.",
+        "placeholder": "gsk_..."
+      }
     },
     "sound": {
       "title": "Sound",

@@ -73,6 +73,8 @@ const ModelCard: React.FC<ModelCardProps> = ({
 }) => {
   const { t } = useTranslation();
   const isFeatured = variant === "featured";
+  const isRemoteModel =
+    model.engine_type === "Groq" || model.engine_type === "CodexDictation";
   const isClickable =
     status === "available" || status === "active" || status === "downloadable";
 
@@ -80,7 +82,8 @@ const ModelCard: React.FC<ModelCardProps> = ({
   const displayName = getTranslatedModelName(model, t);
   const displayDescription = getTranslatedModelDescription(model, t);
   const showModelSize =
-    status === "downloadable" || status === "available" || status === "active";
+    !isRemoteModel &&
+    (status === "downloadable" || status === "available" || status === "active");
   const formattedModelSize = formatModelSize(Number(model.size_mb));
 
   const baseClasses =
@@ -231,7 +234,9 @@ const ModelCard: React.FC<ModelCardProps> = ({
             <span>{formattedModelSize}</span>
           </span>
         )}
-        {onDelete && (status === "available" || status === "active") && (
+        {onDelete &&
+          !isRemoteModel &&
+          (status === "available" || status === "active") && (
           <Button
             variant="ghost"
             size="sm"

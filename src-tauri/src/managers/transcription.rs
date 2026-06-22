@@ -45,6 +45,7 @@ enum LoadedEngine {
     GigaAM(GigaAMModel),
     Canary(CanaryModel),
     Cohere(CohereModel),
+    Remote(crate::managers::remote_transcription::RemoteProvider),
 }
 
 /// RAII guard that clears the `is_loading` flag and notifies waiters on drop.
@@ -284,6 +285,36 @@ impl TranscriptionManager {
             return Err(anyhow::anyhow!(error_msg));
         }
 
+        // Remote providers have no local model file to load. "Loading" just
+        // records the active provider so the rest of the pipeline behaves
+        // as if a model were resident.
+        if let Some(provider) =
+            crate::managers::remote_transcription::RemoteProvider::from_engine(
+                &model_info.engine_type,
+            )
+        {
+            {
+                let mut engine = self.lock_engine();
+                *engine = Some(LoadedEngine::Remote(provider));
+            }
+            {
+                let mut current_model = self.current_model_id.lock().unwrap();
+                *current_model = Some(model_id.to_string());
+            }
+            self.touch_activity();
+
+            let _ = self.app_handle.emit(
+                "model-state-changed",
+                ModelStateEvent {
+                    event_type: "loading_completed".to_string(),
+                    model_id: Some(model_id.to_string()),
+                    model_name: Some(model_info.name.clone()),
+                    error: None,
+                },
+            );
+            return Ok(());
+        }
+
         let model_path = self.model_manager.get_model_path(model_id)?;
 
         // Create appropriate engine based on model type
@@ -376,6 +407,11 @@ impl TranscriptionManager {
                     anyhow::anyhow!(error_msg)
                 })?;
                 LoadedEngine::Cohere(engine)
+            }
+            EngineType::CodexDictation | EngineType::Groq => {
+                // Remote providers are handled by the short-circuit above and
+                // never reach the local-engine loader.
+                unreachable!("remote engine handled before local loader")
             }
         };
 
@@ -524,7 +560,7 @@ impl TranscriptionManager {
             drop(engine_guard);
 
             let transcribe_result = catch_unwind(AssertUnwindSafe(
-                || -> Result<transcribe_rs::TranscriptionResult> {
+                || -> Result<String> {
                     match &mut engine {
                         LoadedEngine::Whisper(whisper_engine) => {
                             let whisper_language = if validated_language == "auto" {
@@ -553,6 +589,7 @@ impl TranscriptionManager {
 
                             whisper_engine
                                 .transcribe_with(&audio, &params)
+                                .map(|r| r.text)
                                 .map_err(|e| anyhow::anyhow!("Whisper transcription failed: {}", e))
                         }
                         LoadedEngine::Parakeet(parakeet_engine) => {
@@ -562,15 +599,18 @@ impl TranscriptionManager {
                             };
                             parakeet_engine
                                 .transcribe_with(&audio, &params)
+                                .map(|r| r.text)
                                 .map_err(|e| {
                                     anyhow::anyhow!("Parakeet transcription failed: {}", e)
                                 })
                         }
                         LoadedEngine::Moonshine(moonshine_engine) => moonshine_engine
                             .transcribe(&audio, &TranscribeOptions::default())
+                            .map(|r| r.text)
                             .map_err(|e| anyhow::anyhow!("Moonshine transcription failed: {}", e)),
                         LoadedEngine::MoonshineStreaming(streaming_engine) => streaming_engine
                             .transcribe(&audio, &TranscribeOptions::default())
+                            .map(|r| r.text)
                             .map_err(|e| {
                                 anyhow::anyhow!("Moonshine streaming transcription failed: {}", e)
                             }),
@@ -589,12 +629,14 @@ impl TranscriptionManager {
                             };
                             sense_voice_engine
                                 .transcribe_with(&audio, &params)
+                                .map(|r| r.text)
                                 .map_err(|e| {
                                     anyhow::anyhow!("SenseVoice transcription failed: {}", e)
                                 })
                         }
                         LoadedEngine::GigaAM(gigaam_engine) => gigaam_engine
                             .transcribe(&audio, &TranscribeOptions::default())
+                            .map(|r| r.text)
                             .map_err(|e| anyhow::anyhow!("GigaAM transcription failed: {}", e)),
                         LoadedEngine::Canary(canary_engine) => {
                             let lang = if validated_language == "auto" {
@@ -609,6 +651,7 @@ impl TranscriptionManager {
                             };
                             canary_engine
                                 .transcribe(&audio, &options)
+                                .map(|r| r.text)
                                 .map_err(|e| anyhow::anyhow!("Canary transcription failed: {}", e))
                         }
                         LoadedEngine::Cohere(cohere_engine) => {
@@ -627,7 +670,16 @@ impl TranscriptionManager {
                             };
                             cohere_engine
                                 .transcribe(&audio, &options)
+                                .map(|r| r.text)
                                 .map_err(|e| anyhow::anyhow!("Cohere transcription failed: {}", e))
+                        }
+                        LoadedEngine::Remote(provider) => {
+                            crate::managers::remote_transcription::transcribe(
+                                provider,
+                                &audio,
+                                &validated_language,
+                                &settings,
+                            )
                         }
                     }
                 },
@@ -692,12 +744,12 @@ impl TranscriptionManager {
 
         let corrected_result = if !settings.custom_words.is_empty() && !is_whisper {
             apply_custom_words(
-                &result.text,
+                &result,
                 &settings.custom_words,
                 settings.word_correction_threshold,
             )
         } else {
-            result.text
+            result
         };
 
         // Filter out filler words and hallucinations

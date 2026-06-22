@@ -1,5 +1,13 @@
 # Handy
 
+> ### 🛠️ Fork: Cloud Dictation (Codex + Groq)
+>
+> This is a personal fork of [cjpais/handy](https://github.com/cjpais/handy) that adds two **online, zero-download** transcription backends — **OpenAI Codex Dictation** (reuses your local Codex CLI login) and **Groq Whisper** — and a working **x86_64 macOS** build path.
+>
+> 👉 **Read the write-up: [CASE_STUDY.md](CASE_STUDY.md)** · Build: [`build-custom.sh`](build-custom.sh)
+>
+> *Everything below is the upstream Handy README.*
+
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
 
 **A free, open source, and extensible speech-to-text application that works completely offline.**
