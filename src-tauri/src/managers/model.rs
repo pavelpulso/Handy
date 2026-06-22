@@ -27,6 +27,16 @@ pub enum EngineType {
     GigaAM,
     Canary,
     Cohere,
+    CodexDictation,
+    Groq,
+}
+
+impl EngineType {
+    /// Remote engines transcribe via an HTTP API instead of a locally loaded
+    /// model. They never download files and are always considered "available".
+    pub fn is_remote(&self) -> bool {
+        matches!(self, EngineType::CodexDictation | EngineType::Groq)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -143,6 +153,61 @@ impl ModelManager {
                 accuracy_score: 0.60,
                 speed_score: 0.85,
                 supports_translation: true,
+                is_recommended: false,
+                supported_languages: whisper_languages.clone(),
+                supports_language_selection: true,
+                is_custom: false,
+            },
+        );
+
+        // Remote (online-only) transcription providers. No download, no local
+        // model file — audio is POSTed to an HTTP API. Always "downloaded".
+        available_models.insert(
+            "codex-dictation".to_string(),
+            ModelInfo {
+                id: "codex-dictation".to_string(),
+                name: "Codex Dictation".to_string(),
+                description: "Cloud dictation via your local Codex login. Requires internet."
+                    .to_string(),
+                filename: String::new(),
+                url: None,
+                sha256: None,
+                size_mb: 0,
+                is_downloaded: true,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::CodexDictation,
+                accuracy_score: 0.95,
+                speed_score: 0.80,
+                supports_translation: false,
+                is_recommended: false,
+                supported_languages: whisper_languages.clone(),
+                supports_language_selection: true,
+                is_custom: false,
+            },
+        );
+
+        available_models.insert(
+            "groq-whisper".to_string(),
+            ModelInfo {
+                id: "groq-whisper".to_string(),
+                name: "Groq Whisper".to_string(),
+                description:
+                    "Cloud transcription via the Groq API. Requires an API key and internet."
+                        .to_string(),
+                filename: String::new(),
+                url: None,
+                sha256: None,
+                size_mb: 0,
+                is_downloaded: true,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::Groq,
+                accuracy_score: 0.90,
+                speed_score: 0.95,
+                supports_translation: false,
                 is_recommended: false,
                 supported_languages: whisper_languages.clone(),
                 supports_language_selection: true,
@@ -723,6 +788,13 @@ impl ModelManager {
         let mut models = self.available_models.lock().unwrap();
 
         for model in models.values_mut() {
+            if model.engine_type.is_remote() {
+                // Remote providers have no files on disk; they are always available.
+                model.is_downloaded = true;
+                model.is_downloading = false;
+                model.partial_size = 0;
+                continue;
+            }
             if model.is_directory {
                 // For directory-based models, check if the directory exists
                 let model_path = self.models_dir.join(&model.filename);
@@ -1336,6 +1408,11 @@ impl ModelManager {
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
 
         debug!("ModelManager: Found model info: {:?}", model_info);
+
+        if model_info.engine_type.is_remote() {
+            // Remote providers have nothing on disk to delete.
+            return Ok(());
+        }
 
         let model_path = self.models_dir.join(&model_info.filename);
         let partial_path = self
